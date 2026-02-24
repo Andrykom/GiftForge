@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: giftforge_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: giftforge
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: giftforge_redis
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  core-api:
+    build: ./core-api
+    container_name: giftforge_api
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/giftforge
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./core-api:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  admin-bot:
+    build: ./admin-bot
+    container_name: giftforge_admin_bot
+    env_file:
+      - .env
+    depends_on:
+      - core-api
+    volumes:
+      - ./admin-bot:/app
+    command: python main.py
+
+  client-bot:
+    build: ./client-bot
+    container_name: giftforge_client_bot
+    env_file:
+      - .env
+    depends_on:
+      - core-api
+    volumes:
+      - ./client-bot:/app
+    command: python main.py
+
+volumes:
+  postgres_data:
+  redis_data:

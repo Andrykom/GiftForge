@@ -1,0 +1,11 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy[asyncio]==2.0.23
+asyncpg==0.29.0
+alembic==1.12.1
+redis==5.0.1
+pydantic-settings==2.1.0
+python-telegram-bot==20.7
+httpx==0.25.2
+qrcode==7.4.2
+pillow==10.1.0
