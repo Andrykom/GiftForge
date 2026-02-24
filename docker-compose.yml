@@ -13,6 +13,8 @@ services:
       - ./database/init:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
+    networks:
+      - giftforge_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -26,6 +28,8 @@ services:
       - redis_data:/data
     ports:
       - "6379:6379"
+    networks:
+      - giftforge_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -42,6 +46,8 @@ services:
       - .env
     ports:
       - "8000:8000"
+    networks:
+      - giftforge_network
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,11 +57,30 @@ services:
       - ./core-api:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+  core-bot:
+    build: ./core-bot
+    container_name: giftforge_core_bot
+    env_file:
+      - .env
+    environment:
+      - API_BASE_URL=http://core-api:8000
+    networks:
+      - giftforge_network
+    depends_on:
+      - core-api
+    volumes:
+      - ./core-bot:/app
+    command: python main.py
+
   admin-bot:
     build: ./admin-bot
     container_name: giftforge_admin_bot
     env_file:
       - .env
+    environment:
+      - API_BASE_URL=http://core-api:8000
+    networks:
+      - giftforge_network
     depends_on:
       - core-api
     volumes:
@@ -67,6 +92,10 @@ services:
     container_name: giftforge_client_bot
     env_file:
       - .env
+    environment:
+      - API_BASE_URL=http://core-api:8000
+    networks:
+      - giftforge_network
     depends_on:
       - core-api
     volumes:
@@ -76,3 +105,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  giftforge_network:
+    driver: bridge

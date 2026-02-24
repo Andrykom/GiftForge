@@ -1,36 +1,110 @@
 import os
+import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+import asyncio
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+from services.api_client import api_client
 
 CLIENT_BOT_TOKEN = os.getenv("CLIENT_BOT_TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.args and context.args[0].startswith("qr_"):
-        qr_token = context.args[0][3:]
-        await update.message.reply_text(
-            f"🎁 Получение подарка...
-"
-            f"(QR токен: {qr_token[:20]}...)
+    """Обработка /start с deep link параметром"""
+    user = update.effective_user
 
-"
-            f"Будет реализовано на Дне 5"
-        )
+    # Проверяем deep link параметр
+    if context.args and len(context.args) > 0:
+        param = context.args[0]
+
+        # Проверяем префикс qr_
+        if param.startswith("qr_"):
+            qr_token = param[3:]  # Убираем префикс
+
+            # Отправляем сообщение о обработке
+            processing_msg = await update.message.reply_text(
+                "🎁 *Обработка вашего подарка...*\n"
+                "Пожалуйста, подождите несколько секунд.",
+                parse_mode="Markdown"
+            )
+
+            try:
+                # Отправляем запрос к API
+                result = await api_client.send_gift(
+                    user_id=user.id,
+                    qr_token=qr_token,
+                    username=user.username
+                )
+
+                if result.get("success"):
+                    # Успешно получили подарок
+                    rarity = result.get("rarity", "common")
+                    name = result.get("name", "Подарок")
+                    emoji = result.get("emoji", "🎁")
+                    stars = result.get("stars_spent", 0)
+
+                    await processing_msg.delete()
+
+                    # Красивое сообщение о подарке
+                    await update.message.reply_text(
+                        f"{emoji} *Поздравляем!* {emoji}\n\n"
+                        f"Вы получили: *{name}*!\n"
+                        f"Редкость: {rarity.capitalize()}\n"
+                        f"Стоимость: {stars} Stars\n\n"
+                        f"🎉 Наслаждайтесь вашим подарком!\n\n"
+                        f"_Спасибо, что выбрали CoffeeShop! ☕_",
+                        parse_mode="Markdown"
+                    )
+
+                    logger.info(f"Gift sent to user {user.id}, rarity: {rarity}")
+
+                else:
+                    await processing_msg.edit_text(
+                        "❌ *Не удалось получить подарок*\n"
+                        "Возможно, QR код уже использован или истёк.",
+                        parse_mode="Markdown"
+                    )
+
+            except Exception as e:
+                logger.error(f"Error processing gift: {e}")
+                await processing_msg.edit_text(
+                    "❌ *Ошибка обработки*\n"
+                    "Попробуйте отсканировать QR код ещё раз или обратитесь к бариста.",
+                    parse_mode="Markdown"
+                )
+        else:
+            # Неизвестный параметр
+            await update.message.reply_text(
+                "⚠️ *Неверная ссылка*\n"
+                "Пожалуйста, получите QR код у бариста.",
+                parse_mode="Markdown"
+            )
     else:
+        # Обычный /start без параметров
         await update.message.reply_text(
-            "☕ Добро пожаловать в CoffeeShop!
-
-"
-            "Попросите бариста QR-код для получения подарка.
-
-"
-            "(MVP Day 1 - базовая структура)"
+            "☕ *Добро пожаловать в CoffeeShop!*\n\n"
+            "🎁 Получите подарок у бариста!\n"
+            "Он выдаст вам уникальный QR код.\n\n"
+            "Просто отсканируйте его камерой Telegram "
+            "или нажмите на ссылку — подарок придёт автоматически!\n\n"
+            "_Ждём вас снова! ☕_",
+            parse_mode="Markdown"
         )
 
 def main():
+    if not CLIENT_BOT_TOKEN:
+        logger.error("CLIENT_BOT_TOKEN not set!")
+        return
+
     application = Application.builder().token(CLIENT_BOT_TOKEN).build()
+
     application.add_handler(CommandHandler("start", start))
 
-    print("🤖 Client Bot запущен")
+    logger.info("🤖 Client Bot запущен")
     application.run_polling()
 
 if __name__ == "__main__":
