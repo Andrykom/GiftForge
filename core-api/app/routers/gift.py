@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
 import os
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.services.qr_service import qr_service
@@ -14,17 +15,20 @@ from app.models.gift_history import GiftHistory
 
 router = APIRouter()
 
+class SendGiftRequest(BaseModel):
+    user_id: int
+    qr_token: str
+    telegram_username: str = None
+
 @router.post("/send")
 async def send_gift(
-    user_id: int,
-    qr_token: str,
-    telegram_username: str = None,
+    request: SendGiftRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """Отправка подарка клиенту"""
 
     # 1. Валидируем QR
-    validation = await qr_service.validate_token(qr_token)
+    validation = await qr_service.validate_token(request.qr_token)
     if not validation:
         raise HTTPException(status_code=400, detail="Invalid or expired QR token")
 
@@ -63,24 +67,24 @@ async def send_gift(
 
     # 6. Отправляем подарок (mock)
     gift_result = await telegram_gift_service.send_gift(
-        user_id, 
+        request.user_id, 
         gift_drop["rarity"]
     )
 
     # 7. Помечаем QR как использованный
-    await qr_service.mark_used(validation["token_hash"], user_id)
+    await qr_service.mark_used(validation["token_hash"], request.user_id)
 
     # 8. Обновляем в БД
     db_token.is_used = True
     db_token.used_at = datetime.utcnow()
-    db_token.used_by = user_id
+    db_token.used_by = request.user_id
 
     # 9. Сохраняем историю
     history = GiftHistory(
         business_id=validation["business_id"],
         qr_token_id=db_token.id,
-        user_id=user_id,
-        telegram_username=telegram_username,
+        user_id=request.user_id,
+        telegram_username=request.telegram_username,
         rarity=gift_drop["rarity"],
         stars_spent=stars_needed,
         gift_telegram_id=gift_result.get("gift_telegram_id"),

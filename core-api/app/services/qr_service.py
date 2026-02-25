@@ -37,10 +37,12 @@ class QRService:
 
         expires_at = datetime.utcnow() + timedelta(seconds=self.ttl)
 
+        # Use the public client bot username for deep-link QR URLs
+        client_bot_username = os.getenv("CLIENT_BOT_USERNAME", "Gift_Forge_Client_bot")
         return {
             "token": token,
             "token_hash": token_hash,
-            "qr_url": f"https://t.me/CoffeeShopBot?start=qr_{token}",
+            "qr_url": f"https://t.me/{client_bot_username}?start=qr_{token}",
             "expires_at": expires_at.isoformat(),
             "ttl_seconds": self.ttl
         }

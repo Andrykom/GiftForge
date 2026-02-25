@@ -1,9 +1,13 @@
 FROM python:3.11-slim
 
 WORKDIR /app
+ENV PYTHONUNBUFFERED=1
 
-RUN pip install --no-cache-dir python-telegram-bot==20.7 httpx==0.25.2
+# Install dependencies from requirements.txt
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy source
 COPY . .
 
 CMD ["python", "main.py"]

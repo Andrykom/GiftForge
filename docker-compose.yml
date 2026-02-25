@@ -47,7 +47,9 @@ services:
     ports:
       - "8000:8000"
     networks:
-      - giftforge_network
+      giftforge_network:
+        aliases:
+          - core-api 
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,7 +58,7 @@ services:
     volumes:
       - ./core-api:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
+  
   core-bot:
     build: ./core-bot
     container_name: giftforge_core_bot

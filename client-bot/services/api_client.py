@@ -62,6 +62,8 @@ class APIClient:
                 },
                 timeout=10.0
             )
+            if response.status_code != 200:
+                logger.error(f"API error {response.status_code}: {response.text}")
             response.raise_for_status()
             return response.json()
 

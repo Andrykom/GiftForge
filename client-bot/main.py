@@ -1,20 +1,38 @@
 import os
 import logging
+from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 import asyncio
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
+
+# Подгружаем переменные окружения из файла .env (если запускаете локально)
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 from services.api_client import api_client
 
 CLIENT_BOT_TOKEN = os.getenv("CLIENT_BOT_TOKEN")
+if not CLIENT_BOT_TOKEN:
+    logger.debug("CLIENT_BOT_TOKEN not found in environment after load_dotenv()")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка /start с deep link параметром"""
+    # Log args and raw message for debugging deep-link behavior
+    try:
+        msg_text = update.message.text if update.message else None
+    except Exception:
+        msg_text = None
+    logger.info(f"/start invoked by user {update.effective_user.id if update.effective_user else 'unknown'}; args={context.args}; text={msg_text}")
     user = update.effective_user
 
     # Проверяем deep link параметр
@@ -95,12 +113,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+
+# (Normal operation: only /start handler is registered)
+
 def main():
     if not CLIENT_BOT_TOKEN:
         logger.error("CLIENT_BOT_TOKEN not set!")
         return
 
     application = Application.builder().token(CLIENT_BOT_TOKEN).build()
+
+    # Удаляем возможный webhook (если кто-то ставил webhook, он мешает polling)
+    try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(application.bot.delete_webhook())
+        logger.debug("Called delete_webhook() to avoid polling conflict")
+    except Exception as e:
+        logger.debug(f"delete_webhook() failed or not needed: {e}")
 
     application.add_handler(CommandHandler("start", start))
 
