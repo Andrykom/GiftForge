@@ -36,71 +36,85 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
     # Проверяем deep link параметр
+    param = None
     if context.args and len(context.args) > 0:
         param = context.args[0]
+    else:
+        # Фоллбек: некоторые клиенты Telegram не прокидывают args при нажатии Start.
+        # Пытаемся распарсить параметр прямо из текста сообщения: '/start qr_...'
+        try:
+            text = update.message.text if update.message else ""
+            if text and text.startswith("/start "):
+                possible = text.split(" ", 1)[1].strip()
+                if possible:
+                    param = possible
+                    logger.debug(f"Parsed start param from text fallback: {param}")
+        except Exception:
+            param = None
 
-        # Проверяем префикс qr_
-        if param.startswith("qr_"):
-            qr_token = param[3:]  # Убираем префикс
+    if param and param.startswith("qr_"):
+        qr_token = param[3:]  # Убираем префикс
 
-            # Отправляем сообщение о обработке
-            processing_msg = await update.message.reply_text(
-                "🎁 *Обработка вашего подарка...*\n"
-                "Пожалуйста, подождите несколько секунд.",
-                parse_mode="Markdown"
+        # Отправляем сообщение о обработке
+        processing_msg = await update.message.reply_text(
+            "🎁 *Обработка вашего подарка...*\n"
+            "Пожалуйста, подождите несколько секунд.",
+            parse_mode="Markdown"
+        )
+
+        try:
+            # Отправляем запрос к API
+            result = await api_client.send_gift(
+                user_id=user.id,
+                qr_token=qr_token,
+                username=user.username
             )
 
-            try:
-                # Отправляем запрос к API
-                result = await api_client.send_gift(
-                    user_id=user.id,
-                    qr_token=qr_token,
-                    username=user.username
-                )
+            if result.get("success"):
+                # Успешно получили подарок
+                rarity = result.get("rarity", "common")
+                name = result.get("name", "Подарок")
+                emoji = result.get("emoji", "🎁")
+                stars = result.get("stars_spent", 0)
 
-                if result.get("success"):
-                    # Успешно получили подарок
-                    rarity = result.get("rarity", "common")
-                    name = result.get("name", "Подарок")
-                    emoji = result.get("emoji", "🎁")
-                    stars = result.get("stars_spent", 0)
+                await processing_msg.delete()
 
-                    await processing_msg.delete()
-
-                    # Красивое сообщение о подарке
-                    await update.message.reply_text(
-                        f"{emoji} *Поздравляем!* {emoji}\n\n"
-                        f"Вы получили: *{name}*!\n"
-                        f"Редкость: {rarity.capitalize()}\n"
-                        f"Стоимость: {stars} Stars\n\n"
-                        f"🎉 Наслаждайтесь вашим подарком!\n\n"
-                        f"_Спасибо, что выбрали CoffeeShop! ☕_",
-                        parse_mode="Markdown"
-                    )
-
-                    logger.info(f"Gift sent to user {user.id}, rarity: {rarity}")
-
-                else:
-                    await processing_msg.edit_text(
-                        "❌ *Не удалось получить подарок*\n"
-                        "Возможно, QR код уже использован или истёк.",
-                        parse_mode="Markdown"
-                    )
-
-            except Exception as e:
-                logger.error(f"Error processing gift: {e}")
-                await processing_msg.edit_text(
-                    "❌ *Ошибка обработки*\n"
-                    "Попробуйте отсканировать QR код ещё раз или обратитесь к бариста.",
+                # Красивое сообщение о подарке
+                await update.message.reply_text(
+                    f"{emoji} *Поздравляем!* {emoji}\n\n"
+                    f"Вы получили: *{name}*!\n"
+                    f"Редкость: {rarity.capitalize()}\n"
+                    f"Стоимость: {stars} Stars\n\n"
+                    f"🎉 Наслаждайтесь вашим подарком!\n\n"
+                    f"_Спасибо, что выбрали CoffeeShop! ☕_",
                     parse_mode="Markdown"
                 )
-        else:
-            # Неизвестный параметр
-            await update.message.reply_text(
-                "⚠️ *Неверная ссылка*\n"
-                "Пожалуйста, получите QR код у бариста.",
+
+                logger.info(f"Gift sent to user {user.id}, rarity: {rarity}")
+
+            else:
+                await processing_msg.edit_text(
+                    "❌ *Не удалось получить подарок*\n"
+                    "Возможно, QR код уже использован или истёк.",
+                    parse_mode="Markdown"
+                )
+
+        except Exception as e:
+            logger.error(f"Error processing gift: {e}")
+            await processing_msg.edit_text(
+                "❌ *Ошибка обработки*\n"
+                "Попробуйте отсканировать QR код ещё раз или обратитесь к бариста.",
                 parse_mode="Markdown"
             )
+
+    elif param:
+        # Неизвестный параметр
+        await update.message.reply_text(
+            "⚠️ *Неверная ссылка*\n"
+            "Пожалуйста, получите QR код у бариста.",
+            parse_mode="Markdown"
+        )
+
     else:
         # Обычный /start без параметров
         await update.message.reply_text(

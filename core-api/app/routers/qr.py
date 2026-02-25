@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Query
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
@@ -10,6 +11,46 @@ from datetime import datetime
 import os
 
 router = APIRouter()
+
+
+@router.get("/claim", response_class=HTMLResponse)
+async def claim_qr(token: str = Query(..., description="QR token, prefixed with qr_")):
+        """Claim endpoint: logs the click and returns an HTML page that attempts
+        to open the Telegram app via tg:// and provides a fallback link to t.me.
+        """
+        client_bot_username = os.getenv("CLIENT_BOT_USERNAME", "Gift_Forge_Client_bot")
+        # Log for analytics/debug
+        print(f"QR claim requested: {token}")
+
+        # Ensure token is URL-encoded when inserted into links
+        from urllib.parse import quote
+        encoded = quote(token, safe="")
+
+        tg_deep = f"tg://resolve?domain={client_bot_username}&start={encoded}"
+        web_link = f"https://t.me/{client_bot_username}?start={encoded}"
+
+        html = f"""
+        <!doctype html>
+        <html>
+            <head>
+                <meta charset="utf-8" />
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <title>Open in Telegram</title>
+            </head>
+            <body>
+                <p>Открывается Telegram… Если приложение не открылось автоматически, нажмите кнопку:</p>
+                <p><a id="open" href="{web_link}">Открыть в Telegram</a></p>
+                <script>
+                    // Try to open tg:// first (mobile deep link). If it fails, user can click the web link.
+                    window.location = "{tg_deep}";
+                    // After a short delay, ensure the web link is visible
+                    setTimeout(function() {{ document.getElementById('open').style.display = 'inline'; }}, 1000);
+                </script>
+            </body>
+        </html>
+        """
+
+        return HTMLResponse(content=html)
 
 async def verify_admin_key(x_api_key: str = Header(...)):
     if x_api_key != os.getenv("ADMIN_API_KEY", "dev-key"):

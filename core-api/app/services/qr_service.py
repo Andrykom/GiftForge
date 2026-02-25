@@ -42,7 +42,8 @@ class QRService:
         return {
             "token": token,
             "token_hash": token_hash,
-            "qr_url": f"https://t.me/{client_bot_username}?start=qr_{token}",
+            # Direct users to the API claim endpoint which will redirect/open Telegram properly
+            "qr_url": f"{os.getenv('PUBLIC_BASE_URL', 'http://localhost:8000')}/qr/claim?token=qr_{token}",
             "expires_at": expires_at.isoformat(),
             "ttl_seconds": self.ttl
         }
