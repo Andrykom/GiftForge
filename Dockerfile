@@ -1,5 +1,8 @@
 # Multi-stage build for GiftForge services
 
+# allow selecting a build target via build-arg
+ARG TARGET=client-bot
+
 # Core API Service
 FROM python:3.11-slim AS core-api
 
@@ -54,3 +57,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY client-bot/ .
 
 CMD ["python", "main.py"]
+
+# -----------------------------------------------------------------------------
+# final stage, automatically selected by TARGET argument or by docker build --target
+# If TARGET is passed as a build-arg it will be used here; otherwise defaults to
+# the client-bot stage so that `docker build .` still produces the client
+# container (same behaviour as before).
+# -----------------------------------------------------------------------------
+FROM ${TARGET} AS final
+
