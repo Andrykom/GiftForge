@@ -1,68 +1,44 @@
-# Multi-stage build for GiftForge services
-
-# allow selecting a build target via build-arg
-ARG TARGET=client-bot
-
-# Core API Service
-FROM python:3.11-slim AS core-api
+# Dockerfile
+FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y gcc libpq-dev && rm -rf /var/lib/apt/lists/*
+# Установка зависимостей для всех сервисов
+COPY requirements.txt .
+COPY core-api/requirements.txt ./core-api/
+COPY core-bot/requirements.txt ./core-bot/
+COPY admin-bot/requirements.txt ./admin-bot/
+COPY client-bot/requirements.txt ./client-bot/
 
-COPY core-api/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Объединение всех зависимостей
+RUN cat core-api/requirements.txt core-bot/requirements.txt \
+    admin-bot/requirements.txt client-bot/requirements.txt > combined.txt && \
+    pip install --no-cache-dir -r combined.txt
 
-COPY core-api/ .
+# Копирование общего кода
+COPY core-api/ ./core-api/
+COPY core-bot/ ./core-bot/
+COPY admin-bot/ ./admin-bot/
+COPY client-bot/ ./client-bot/
+COPY database/ ./database/
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Аргумент для выбора сервиса
+ARG SERVICE
+ENV SERVICE=${SERVICE}
 
-# Core Bot Service
-FROM python:3.11-slim AS core-bot
+# Создаем скрипт запуска
+RUN echo '#!/bin/bash\n\
+if [ "$SERVICE" = "core-api" ]; then\n\
+    cd core-api && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}\n\
+elif [ "$SERVICE" = "core-bot" ]; then\n\
+    cd core-bot && python main.py\n\
+elif [ "$SERVICE" = "admin-bot" ]; then\n\
+    cd admin-bot && python main.py\n\
+elif [ "$SERVICE" = "client-bot" ]; then\n\
+    cd client-bot && python main.py\n\
+else\n\
+    echo "Unknown service: $SERVICE"\n\
+    exit 1\n\
+fi' > /start.sh && chmod +x /start.sh
 
-WORKDIR /app
-
-RUN pip install --no-cache-dir python-telegram-bot==20.7 httpx==0.25.2
-
-COPY core-bot/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt 2>/dev/null || true
-
-COPY core-bot/ .
-
-CMD ["python", "main.py"]
-
-# Admin Bot Service
-FROM python:3.11-slim AS admin-bot
-
-WORKDIR /app
-
-RUN pip install --no-cache-dir python-telegram-bot==20.7 httpx==0.25.2 qrcode==7.4.2 pillow==10.1.0
-
-COPY admin-bot/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt 2>/dev/null || true
-
-COPY admin-bot/ .
-
-CMD ["python", "main.py"]
-
-# Client Bot Service
-FROM python:3.11-slim AS client-bot
-
-WORKDIR /app
-ENV PYTHONUNBUFFERED=1
-
-COPY client-bot/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY client-bot/ .
-
-CMD ["python", "main.py"]
-
-# -----------------------------------------------------------------------------
-# final stage, automatically selected by TARGET argument or by docker build --target
-# If TARGET is passed as a build-arg it will be used here; otherwise defaults to
-# the client-bot stage so that `docker build .` still produces the client
-# container (same behaviour as before).
-# -----------------------------------------------------------------------------
-FROM ${TARGET} AS final
-
+CMD ["/start.sh"]
